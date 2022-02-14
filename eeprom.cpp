@@ -231,6 +231,7 @@ void EEPROM::write(uint32_t address, int8_t data[], uint32_t length)
   uint8_t i, j, ind;
   uint8_t cmd[129];
   int ack;
+  uint32_t written_cnt = 0;
 
   // Check error
   if (_errnum)
@@ -250,11 +251,14 @@ void EEPROM::write(uint32_t address, int8_t data[], uint32_t length)
     return;
   }
 
+  // Consider offset for correct number of blocs
+  auto offset = address % _page_write;
+
   // Compute blocs numbers
-  blocs = length / _page_write;
+  blocs = (length + offset) / _page_write;
 
   // Compute remaining bytes
-  remain = length - blocs * _page_write;
+  remain = (length + offset) - blocs * _page_write;
 
   for (i = 0; i < blocs; i++)
   {
@@ -274,11 +278,13 @@ void EEPROM::write(uint32_t address, int8_t data[], uint32_t length)
       if ((uint8_t)((address + _page_write) / 256) == page)
       { // Data fit in the same page
         // Add data
-        for (j = 0; j < _page_write; j++)
-          cmd[j + 1] = (uint8_t)data[i * _page_write + j];
+        auto page_offset = address % _page_write;
+
+        for (j = 0; j < _page_write - page_offset; j++)
+          cmd[j + 1] = (uint8_t)data[written_cnt + j];
 
         // Write data
-        ack = _i2c.write((int)addr, (char *)cmd, _page_write + 1);
+        ack = _i2c.write((int)addr, (char *)cmd, _page_write - page_offset + 1);
         if (ack != 0)
         {
           _errnum = EEPROM_I2cError;
@@ -289,7 +295,8 @@ void EEPROM::write(uint32_t address, int8_t data[], uint32_t length)
         ready();
 
         // Increment address
-        address += _page_write;
+        address += (_page_write - page_offset);
+        written_cnt += (_page_write - page_offset);
       }
       else
       { // Data on 2 pages. We must split the write
@@ -359,12 +366,14 @@ void EEPROM::write(uint32_t address, int8_t data[], uint32_t length)
       // Second word address (LSB)
       cmd[1] = (uint8_t)address;
 
+      // calculate offset from page start
+      auto page_offset = address % _page_write;
       // Add data
-      for (j = 0; j < _page_write; j++)
-        cmd[j + 2] = (uint8_t)data[i * _page_write + j];
+      for (j = 0; j < _page_write - page_offset; j++)
+        cmd[j + 2] = (uint8_t)data[written_cnt + j];
 
       // Write data
-      ack = _i2c.write((int)addr, (char *)cmd, _page_write + 2);
+      ack = _i2c.write((int)addr, (char *)cmd, _page_write - page_offset + 2);
       if (ack != 0)
       {
         _errnum = EEPROM_I2cError;
@@ -375,7 +384,8 @@ void EEPROM::write(uint32_t address, int8_t data[], uint32_t length)
       ready();
 
       // Increment address
-      address += _page_write;
+      address += (_page_write - offset);
+      written_cnt += (_page_write - offset);
     }
   }
 
