@@ -224,7 +224,7 @@ void EEPROM::write(uint32_t address, int8_t data[], uint32_t length)
   uint8_t cmd[130];
   int ack;
   uint32_t written_cnt = 0;
-  uint8_t len = 2;
+  uint8_t len;
 
   // Check error
   if (_errnum)
@@ -264,14 +264,16 @@ void EEPROM::write(uint32_t address, int8_t data[], uint32_t length)
     // Device address
     addr = EEPROM_Address | _address;
 
-    // For these classes of EEPROM the address is one a single byte instead of two
+    // Depending on the EEPROM the address can either be on one or two bytes
     if (_type < T24C32)
       len = 1;
+    else
+      len = 2;
 
     // Offset from start of page
     auto page_offset = address % _page_write;
 
-    // Set the address part of cmd
+    // Set the address part of cmd, in the case of the address on 2 bytes the MSB goes in the first element of cmd
     for (auto l = 0; l < len; l++)
       cmd[l] = (uint8_t)((address - page_offset) >> (8 * (len - l - 1)));
 
@@ -435,7 +437,7 @@ void EEPROM::read(uint32_t address, int8_t &data)
 {
   uint8_t addr;
   uint8_t cmd[2];
-  uint8_t len = 2;
+  uint8_t len;
   int ack;
 
   // Check error
@@ -452,9 +454,13 @@ void EEPROM::read(uint32_t address, int8_t &data)
   // Device address
   addr = EEPROM_Address | _address;
 
+  // Depending on the EEPROM the address can either be on one or two bytes
   if (_type < T24C32)
     len = 1;
+  else
+    len = 2;
 
+  // Set the address part of cmd, in the case of the address on 2 bytes the MSB goes in the first element of cmd
   for (auto l = 0; l < len; l++)
     cmd[l] = (uint8_t)((address) >> (8 * (len - l - 1)));
 
@@ -488,7 +494,7 @@ void EEPROM::read(uint32_t address, int8_t *data, uint32_t size)
 {
   uint8_t addr;
   uint8_t cmd[2];
-  uint8_t len = 2;
+  uint8_t len;
   int ack;
 
   // Check error
@@ -512,9 +518,13 @@ void EEPROM::read(uint32_t address, int8_t *data, uint32_t size)
   // Device address
   addr = EEPROM_Address | _address;
 
+  // Depending on the EEPROM the address can either be on one or two bytes
   if (_type < T24C32)
     len = 1;
+  else
+    len = 2;
 
+  // Set the address part of cmd, in the case of the address on 2 bytes the MSB goes in the first element of cmd
   for (auto l = 0; l < len; l++)
     cmd[l] = (uint8_t)((address) >> (8 * (len - l - 1)));
 
