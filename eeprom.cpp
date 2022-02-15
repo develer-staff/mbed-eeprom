@@ -229,7 +229,7 @@ void EEPROM::write(uint32_t address, int8_t data[], uint32_t length)
   uint8_t blocs, remain;
   uint8_t fpart, lpart;
   uint8_t i, j, ind;
-  uint8_t cmd[129];
+  uint8_t cmd[130];
   int ack;
   uint32_t written_cnt = 0;
 
@@ -272,19 +272,25 @@ void EEPROM::write(uint32_t address, int8_t data[], uint32_t length)
 
     if (_type < T24C32)
     {
-      // Word address
-      cmd[0] = (uint8_t)(address - page * 256);
+      // Offset from start of page
+      auto page_offset = address % _page_write;
+
+      // Word address, always write entire page from start
+      cmd[0] = (uint8_t)((address - page_offset) - page * 256);
 
       if ((uint8_t)((address + _page_write) / 256) == page)
       { // Data fit in the same page
         // Add data
-        auto page_offset = address % _page_write;
+
+        // If this is a partial write, read the whole page to refresh the untoched values
+        if (page_offset != 0)
+          read(address - page_offset, cmd + 1, _page_write);
 
         for (j = 0; j < _page_write - page_offset; j++)
-          cmd[j + 1] = (uint8_t)data[written_cnt + j];
+          cmd[j + page_offset + 1] = (uint8_t)data[written_cnt + j];
 
         // Write data
-        ack = _i2c.write((int)addr, (char *)cmd, _page_write - page_offset + 1);
+        ack = _i2c.write((int)addr, (char *)cmd, _page_write + 1);
         if (ack != 0)
         {
           _errnum = EEPROM_I2cError;
@@ -295,8 +301,8 @@ void EEPROM::write(uint32_t address, int8_t data[], uint32_t length)
         ready();
 
         // Increment address
-        address += (_page_write - page_offset);
         written_cnt += (_page_write - page_offset);
+        address += written_cnt;
       }
       else
       { // Data on 2 pages. We must split the write
@@ -360,20 +366,25 @@ void EEPROM::write(uint32_t address, int8_t data[], uint32_t length)
     }
     else
     {
-      // First word address (MSB)
-      cmd[0] = (uint8_t)(address >> 8);
+      // Offset from start of page
+      auto page_offset = address % _page_write;
+
+      // First word address (MSB), always write entire page from start
+      cmd[0] = (uint8_t)((address - page_offset) >> 8);
 
       // Second word address (LSB)
-      cmd[1] = (uint8_t)address;
+      cmd[1] = (uint8_t)(address - page_offset);
 
-      // calculate offset from page start
-      auto page_offset = address % _page_write;
+      // If this is a partial write, read the whole page to refresh the untoched values
+      if (page_offset != 0)
+        read(address - page_offset, cmd + 2, _page_write);
+
       // Add data
       for (j = 0; j < _page_write - page_offset; j++)
-        cmd[j + 2] = (uint8_t)data[written_cnt + j];
+        cmd[j + page_offset + 2] = (uint8_t)data[written_cnt + j];
 
       // Write data
-      ack = _i2c.write((int)addr, (char *)cmd, _page_write - page_offset + 2);
+      ack = _i2c.write((int)addr, (char *)cmd, _page_write + 2);
       if (ack != 0)
       {
         _errnum = EEPROM_I2cError;
@@ -384,8 +395,8 @@ void EEPROM::write(uint32_t address, int8_t data[], uint32_t length)
       ready();
 
       // Increment address
-      address += (_page_write - offset);
-      written_cnt += (_page_write - offset);
+      written_cnt += (_page_write - page_offset);
+      address += written_cnt;
     }
   }
 
@@ -406,12 +417,15 @@ void EEPROM::write(uint32_t address, int8_t data[], uint32_t length)
 
       if ((uint8_t)((address + remain) / 256) == page)
       { // Data fit in the same page
+
+        read(address, cmd + 1, _page_write);
+
         // Add data for the current page
         for (j = 0; j < remain; j++)
           cmd[j + 1] = (uint8_t)data[blocs * _page_write + j];
 
         // Write data for the current page
-        ack = _i2c.write((int)addr, (char *)cmd, remain + 1);
+        ack = _i2c.write((int)addr, (char *)cmd, _page_write + 1);
         if (ack != 0)
         {
           _errnum = EEPROM_I2cError;
@@ -486,12 +500,14 @@ void EEPROM::write(uint32_t address, int8_t data[], uint32_t length)
       // Second word address (LSB)
       cmd[1] = (uint8_t)address;
 
+      read(address, cmd + 2, _page_write);
+
       // Add data for the current page
       for (j = 0; j < remain; j++)
         cmd[j + 2] = (uint8_t)data[blocs * _page_write + j];
 
       // Write data for the current page
-      ack = _i2c.write((int)addr, (char *)cmd, remain + 2);
+      ack = _i2c.write((int)addr, (char *)cmd, _page_write + 2);
       if (ack != 0)
       {
         _errnum = EEPROM_I2cError;
