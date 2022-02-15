@@ -273,7 +273,7 @@ void EEPROM::write(uint32_t address, int8_t data[], uint32_t length)
 
     // Set the address part of cmd
     for (auto l = 0; l < len; l++)
-      cmd[l] = (uint8_t)((address - page_offset) >> (8 * (1 - l)));
+      cmd[l] = (uint8_t)((address - page_offset) >> (8 * (len - l - 1)));
 
     // In case this is a partial write, read the whole page to refresh the untouched values
     if (page_offset != 0 || bytes_to_write < _page_write)
@@ -433,10 +433,9 @@ void EEPROM::write(uint32_t address, void *data, uint32_t size)
  */
 void EEPROM::read(uint32_t address, int8_t &data)
 {
-  uint8_t page;
   uint8_t addr;
   uint8_t cmd[2];
-  uint8_t len;
+  uint8_t len = 2;
   int ack;
 
   // Check error
@@ -450,31 +449,14 @@ void EEPROM::read(uint32_t address, int8_t &data)
     return;
   }
 
-  // Compute page number
-  page = 0;
-  if (_type < T24C32)
-    page = (uint8_t)(address / 256);
-
   // Device address
-  addr = EEPROM_Address | _address | (page << 1);
+  addr = EEPROM_Address | _address;
 
   if (_type < T24C32)
-  {
     len = 1;
 
-    // Word address
-    cmd[0] = (uint8_t)(address - page * 256);
-  }
-  else
-  {
-    len = 2;
-
-    // First word address (MSB)
-    cmd[0] = (uint8_t)(address >> 8);
-
-    // Second word address (LSB)
-    cmd[1] = (uint8_t)address;
-  }
+  for (auto l = 0; l < len; l++)
+    cmd[l] = (uint8_t)((address) >> (8 * (len - l - 1)));
 
   // Write command
   ack = _i2c.write((int)addr, (char *)cmd, len, true);
@@ -504,10 +486,9 @@ void EEPROM::read(uint32_t address, int8_t &data)
  */
 void EEPROM::read(uint32_t address, int8_t *data, uint32_t size)
 {
-  uint8_t page;
   uint8_t addr;
   uint8_t cmd[2];
-  uint8_t len;
+  uint8_t len = 2;
   int ack;
 
   // Check error
@@ -528,31 +509,14 @@ void EEPROM::read(uint32_t address, int8_t *data, uint32_t size)
     return;
   }
 
-  // Compute page number
-  page = 0;
-  if (_type < T24C32)
-    page = (uint8_t)(address / 256);
-
   // Device address
-  addr = EEPROM_Address | _address | (page << 1);
+  addr = EEPROM_Address | _address;
 
   if (_type < T24C32)
-  {
     len = 1;
 
-    // Word address
-    cmd[0] = (uint8_t)(address - page * 256);
-  }
-  else
-  {
-    len = 2;
-
-    // First word address (MSB)
-    cmd[0] = (uint8_t)(address >> 8);
-
-    // Second word address (LSB)
-    cmd[1] = (uint8_t)address;
-  }
+  for (auto l = 0; l < len; l++)
+    cmd[l] = (uint8_t)((address) >> (8 * (len - l - 1)));
 
   // Write command
   ack = _i2c.write((int)addr, (char *)cmd, len, true);
