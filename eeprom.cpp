@@ -153,7 +153,6 @@ EEPROM::EEPROM(PinName sda, PinName scl, uint8_t address, TypeEeprom type) : _i2
  */
 void EEPROM::write(uint32_t address, int8_t data)
 {
-  uint8_t page;
   uint8_t addr;
   uint8_t cmd[3];
   int len;
@@ -170,20 +169,15 @@ void EEPROM::write(uint32_t address, int8_t data)
     return;
   }
 
-  // Compute page number
-  page = 0;
-  if (_type < T24C32)
-    page = (uint8_t)(address / 256);
-
   // Device address
-  addr = EEPROM_Address | _address | (page << 1);
+  addr = EEPROM_Address | _address;
 
   if (_type < T24C32)
   {
     len = 2;
 
     // Word address
-    cmd[0] = (uint8_t)(address - page * 256);
+    cmd[0] = (uint8_t)address;
 
     // Data
     cmd[1] = (uint8_t)data;
@@ -224,14 +218,13 @@ void EEPROM::write(uint32_t address, int8_t data)
  */
 void EEPROM::write(uint32_t address, int8_t data[], uint32_t length)
 {
-  uint8_t page;
   uint8_t addr = 0;
   uint8_t blocs, remain;
-  uint8_t fpart, lpart;
-  uint8_t i, j, ind;
+  uint8_t i, j;
   uint8_t cmd[130];
   int ack;
   uint32_t written_cnt = 0;
+  uint8_t len = 2;
 
   // Check error
   if (_errnum)
@@ -260,263 +253,51 @@ void EEPROM::write(uint32_t address, int8_t data[], uint32_t length)
   // Compute remaining bytes
   remain = (length + offset) - blocs * _page_write;
 
+  if (remain)
+    blocs++;
+
+  int32_t bytes_to_write = length;
+  auto start_address = address;
+
   for (i = 0; i < blocs; i++)
   {
-    // Compute page number
-    page = 0;
-    if (_type < T24C32)
-      page = (uint8_t)(address / 256);
-
     // Device address
-    addr = EEPROM_Address | _address | (page << 1);
+    addr = EEPROM_Address | _address;
 
+    // For these classes of EEPROM the address is one a single byte instead of two
     if (_type < T24C32)
+      len = 1;
+
+    // Offset from start of page
+    auto page_offset = address % _page_write;
+
+    // Set the address part of cmd
+    for (auto l = 0; l < len; l++)
+      cmd[l] = (uint8_t)((address - page_offset) >> (8 * (1 - l)));
+
+    // In case this is a partial write, read the whole page to refresh the untouched values
+    if (page_offset != 0 || bytes_to_write < _page_write)
+      read(address - page_offset, cmd + len, _page_write);
+
+    // Loop  up to the page end or until there is data to read
+    for (j = 0; (j < _page_write - page_offset) && (j < bytes_to_write); j++)
+      cmd[j + page_offset + len] = (uint8_t)data[written_cnt + j];
+
+    // Write data
+    ack = _i2c.write((int)addr, (char *)cmd, _page_write + len);
+    if (ack != 0)
     {
-      // Offset from start of page
-      auto page_offset = address % _page_write;
-
-      // Word address, always write entire page from start
-      cmd[0] = (uint8_t)((address - page_offset) - page * 256);
-
-      if ((uint8_t)((address + _page_write) / 256) == page)
-      { // Data fit in the same page
-        // Add data
-
-        // If this is a partial write, read the whole page to refresh the untoched values
-        if (page_offset != 0)
-          read(address - page_offset, cmd + 1, _page_write);
-
-        for (j = 0; j < _page_write - page_offset; j++)
-          cmd[j + page_offset + 1] = (uint8_t)data[written_cnt + j];
-
-        // Write data
-        ack = _i2c.write((int)addr, (char *)cmd, _page_write + 1);
-        if (ack != 0)
-        {
-          _errnum = EEPROM_I2cError;
-          return;
-        }
-
-        // Wait end of write
-        ready();
-
-        // Increment address
-        written_cnt += (_page_write - page_offset);
-        address += written_cnt;
-      }
-      else
-      { // Data on 2 pages. We must split the write
-        // Number of bytes in current page
-        fpart = (page + 1) * 256 - address;
-
-        // Add data for current page
-        for (j = 0; j < fpart; j++)
-          cmd[j + 1] = (uint8_t)data[i * _page_write + j];
-
-        // Write data for current page
-        ack = _i2c.write((int)addr, (char *)cmd, fpart + 1);
-        if (ack != 0)
-        {
-          _errnum = EEPROM_I2cError;
-          return;
-        }
-
-        // Wait end of write
-        ready();
-
-        // Increment address
-        address += fpart;
-
-        if (page < _page_number - 1)
-        {
-          // Increment page
-          page++;
-
-          // Device address
-          addr = EEPROM_Address | _address | (page << 1);
-
-          // Word address
-          cmd[0] = (uint8_t)(address - page * 256);
-
-          // Data index
-          ind = i * _page_write + fpart;
-
-          // Number of bytes in next page
-          lpart = _page_write - fpart;
-
-          // Add data for next page
-          for (j = 0; j < lpart; j++)
-            cmd[j + 1] = (uint8_t)data[ind + j];
-
-          // Write data for next page
-          ack = _i2c.write((int)addr, (char *)cmd, lpart + 1);
-          if (ack != 0)
-          {
-            _errnum = EEPROM_I2cError;
-            return;
-          }
-
-          // Wait end of write
-          ready();
-
-          // Increment address
-          address += lpart;
-        }
-      }
+      _errnum = EEPROM_I2cError;
+      return;
     }
-    else
-    {
-      // Offset from start of page
-      auto page_offset = address % _page_write;
 
-      // First word address (MSB), always write entire page from start
-      cmd[0] = (uint8_t)((address - page_offset) >> 8);
+    // Wait end of write
+    ready();
 
-      // Second word address (LSB)
-      cmd[1] = (uint8_t)(address - page_offset);
-
-      // If this is a partial write, read the whole page to refresh the untoched values
-      if (page_offset != 0)
-        read(address - page_offset, cmd + 2, _page_write);
-
-      // Add data
-      for (j = 0; j < _page_write - page_offset; j++)
-        cmd[j + page_offset + 2] = (uint8_t)data[written_cnt + j];
-
-      // Write data
-      ack = _i2c.write((int)addr, (char *)cmd, _page_write + 2);
-      if (ack != 0)
-      {
-        _errnum = EEPROM_I2cError;
-        return;
-      }
-
-      // Wait end of write
-      ready();
-
-      // Increment address
-      written_cnt += (_page_write - page_offset);
-      address += written_cnt;
-    }
-  }
-
-  if (remain)
-  {
-    // Compute page number
-    page = 0;
-    if (_type < T24C32)
-      page = (uint8_t)(address / 256);
-
-    // Device address
-    addr = EEPROM_Address | _address | (page << 1);
-
-    if (_type < T24C32)
-    {
-      // Word address
-      cmd[0] = (uint8_t)(address - page * 256);
-
-      if ((uint8_t)((address + remain) / 256) == page)
-      { // Data fit in the same page
-
-        read(address, cmd + 1, _page_write);
-
-        // Add data for the current page
-        for (j = 0; j < remain; j++)
-          cmd[j + 1] = (uint8_t)data[blocs * _page_write + j];
-
-        // Write data for the current page
-        ack = _i2c.write((int)addr, (char *)cmd, _page_write + 1);
-        if (ack != 0)
-        {
-          _errnum = EEPROM_I2cError;
-          return;
-        }
-
-        // Wait end of write
-        ready();
-      }
-      else
-      { // Data on 2 pages. We must split the write
-        // Number of bytes in current page
-        fpart = (page + 1) * 256 - address;
-
-        // Add data for current page
-        for (j = 0; j < fpart; j++)
-          cmd[j + 1] = (uint8_t)data[blocs * _page_write + j];
-
-        // Write data for current page
-        ack = _i2c.write((int)addr, (char *)cmd, fpart + 1);
-        if (ack != 0)
-        {
-          _errnum = EEPROM_I2cError;
-          return;
-        }
-
-        // Wait end of write
-        ready();
-
-        // Increment address
-        address += fpart;
-
-        if (page < _page_number - 1)
-        {
-          // Increment page
-          page++;
-
-          // Device address
-          addr = EEPROM_Address | _address | (page << 1);
-
-          // Word address
-          cmd[0] = (uint8_t)(address - page * 256);
-
-          // Data index
-          ind = blocs * _page_write + fpart;
-
-          // Number of bytes in next page
-          lpart = remain - fpart;
-
-          // Add data for next page
-          for (j = 0; j < lpart; j++)
-            cmd[j + 1] = (uint8_t)data[ind + j];
-
-          // Write data for next page
-          ack = _i2c.write((int)addr, (char *)cmd, lpart + 1);
-          if (ack != 0)
-          {
-            _errnum = EEPROM_I2cError;
-            return;
-          }
-
-          // Wait end of write
-          ready();
-        }
-      }
-    }
-    else
-    {
-      // Fist word address (MSB)
-      cmd[0] = (uint8_t)(address >> 8);
-
-      // Second word address (LSB)
-      cmd[1] = (uint8_t)address;
-
-      read(address, cmd + 2, _page_write);
-
-      // Add data for the current page
-      for (j = 0; j < remain; j++)
-        cmd[j + 2] = (uint8_t)data[blocs * _page_write + j];
-
-      // Write data for the current page
-      ack = _i2c.write((int)addr, (char *)cmd, _page_write + 2);
-      if (ack != 0)
-      {
-        _errnum = EEPROM_I2cError;
-        return;
-      }
-
-      // Wait end of write
-      ready();
-    }
+    // Increment address and update the number of bytes written and to be written
+    written_cnt += (_page_write - page_offset);
+    address = start_address + written_cnt;
+    bytes_to_write = length - written_cnt;
   }
 }
 
