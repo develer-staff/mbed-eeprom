@@ -60,7 +60,7 @@ EEPROM::EEPROM(PinName sda, PinName scl, uint8_t address, TypeEeprom type) : _i2
     }
     _address = _address << 1;
     _page_write = 8;
-    _page_number = 1;
+    _page_block_number = 1;
     break;
   case T24C04:
     if (address > 7)
@@ -69,7 +69,7 @@ EEPROM::EEPROM(PinName sda, PinName scl, uint8_t address, TypeEeprom type) : _i2
     }
     _address = (_address & 0xFE) << 1;
     _page_write = 16;
-    _page_number = 2;
+    _page_block_number = 2;
     break;
   case T24C08:
     if (address > 7)
@@ -78,12 +78,12 @@ EEPROM::EEPROM(PinName sda, PinName scl, uint8_t address, TypeEeprom type) : _i2
     }
     _address = (_address & 0xFC) << 1;
     _page_write = 16;
-    _page_number = 4;
+    _page_block_number = 4;
     break;
   case T24C16:
     _address = 0;
     _page_write = 16;
-    _page_number = 8;
+    _page_block_number = 8;
     break;
   case T24C32:
   case T24C64:
@@ -93,7 +93,7 @@ EEPROM::EEPROM(PinName sda, PinName scl, uint8_t address, TypeEeprom type) : _i2
     }
     _address = _address << 1;
     _page_write = 32;
-    _page_number = 1;
+    _page_block_number = 1;
     break;
   case T24C128:
   case T24C256:
@@ -103,7 +103,7 @@ EEPROM::EEPROM(PinName sda, PinName scl, uint8_t address, TypeEeprom type) : _i2
     }
     _address = _address << 1;
     _page_write = 64;
-    _page_number = 1;
+    _page_block_number = 1;
     break;
   case T24C512:
     if (address > 3)
@@ -112,7 +112,7 @@ EEPROM::EEPROM(PinName sda, PinName scl, uint8_t address, TypeEeprom type) : _i2
     }
     _address = _address << 1;
     _page_write = 128;
-    _page_number = 1;
+    _page_block_number = 1;
     break;
   case T24C1024:
     if (address > 7)
@@ -121,7 +121,7 @@ EEPROM::EEPROM(PinName sda, PinName scl, uint8_t address, TypeEeprom type) : _i2
     }
     _address = (_address & 0xFE) << 1;
     _page_write = 128;
-    _page_number = 2;
+    _page_block_number = 2;
     break;
   case T24C1025:
     if (address > 3)
@@ -130,7 +130,7 @@ EEPROM::EEPROM(PinName sda, PinName scl, uint8_t address, TypeEeprom type) : _i2
     }
     _address = _address << 1;
     _page_write = 128;
-    _page_number = 2;
+    _page_block_number = 2;
     break;
   }
 
@@ -153,6 +153,7 @@ EEPROM::EEPROM(PinName sda, PinName scl, uint8_t address, TypeEeprom type) : _i2
  */
 void EEPROM::write(uint32_t address, int8_t data)
 {
+  uint8_t page_block;
   uint8_t addr;
   uint8_t cmd[3];
   int len;
@@ -169,8 +170,21 @@ void EEPROM::write(uint32_t address, int8_t data)
     return;
   }
 
+  // Compute page block
+  page_block = 0;
+  if (_type < T24C32)
+  {
+    page_block = address / 0xFF;
+    address %= 0xFF;
+  }
+  else if (_type > T24C512)
+  {
+    page_block = address / 0xFFFF;
+    address %= 0xFFFF;
+  }
+
   // Device address
-  addr = EEPROM_Address | _address;
+  addr = EEPROM_Address | _address | (page_block << 1);
 
   if (_type < T24C32)
   {
@@ -218,6 +232,7 @@ void EEPROM::write(uint32_t address, int8_t data)
  */
 void EEPROM::write(uint32_t address, int8_t data[], uint32_t length)
 {
+  uint8_t page_block;
   uint8_t addr = 0;
   uint8_t blocs, remain;
   uint8_t i, j;
@@ -261,8 +276,21 @@ void EEPROM::write(uint32_t address, int8_t data[], uint32_t length)
 
   for (i = 0; i < blocs; i++)
   {
+    // Compute page block
+    page_block = 0;
+    if (_type < T24C32)
+    {
+      page_block = address / 0xFF;
+      address %= 0xFF;
+    }
+    else if (_type > T24C512)
+    {
+      page_block = address / 0xFFFF;
+      address %= 0xFFFF;
+    }
+
     // Device address
-    addr = EEPROM_Address | _address;
+    addr = EEPROM_Address | _address | (page_block << 1);
 
     // Depending on the EEPROM the address can either be on one or two bytes
     if (_type < T24C32)
@@ -435,6 +463,7 @@ void EEPROM::write(uint32_t address, void *data, uint32_t size)
  */
 void EEPROM::read(uint32_t address, int8_t &data)
 {
+  uint8_t page_block;
   uint8_t addr;
   uint8_t cmd[2];
   uint8_t len;
@@ -451,8 +480,21 @@ void EEPROM::read(uint32_t address, int8_t &data)
     return;
   }
 
+  // Compute page block
+  page_block = 0;
+  if (_type < T24C32)
+  {
+    page_block = address / 0xFF;
+    address %= 0xFF;
+  }
+  else if (_type > T24C512)
+  {
+    page_block = address / 0xFFFF;
+    address %= 0xFFFF;
+  }
+
   // Device address
-  addr = EEPROM_Address | _address;
+  addr = EEPROM_Address | _address | (page_block << 1);
 
   // Depending on the EEPROM the address can either be on one or two bytes
   if (_type < T24C32)
@@ -492,6 +534,7 @@ void EEPROM::read(uint32_t address, int8_t &data)
  */
 void EEPROM::read(uint32_t address, int8_t *data, uint32_t size)
 {
+  uint8_t page_block;
   uint8_t addr;
   uint8_t cmd[2];
   uint8_t len;
@@ -515,8 +558,21 @@ void EEPROM::read(uint32_t address, int8_t *data, uint32_t size)
     return;
   }
 
+  // Compute page block
+  page_block = 0;
+  if (_type < T24C32)
+  {
+    page_block = address / 0xFF;
+    address %= 0xFF;
+  }
+  else if (_type > T24C512)
+  {
+    page_block = address / 0xFFFF;
+    address %= 0xFFFF;
+  }
+
   // Device address
-  addr = EEPROM_Address | _address;
+  addr = EEPROM_Address | _address | (page_block << 1);
 
   // Depending on the EEPROM the address can either be on one or two bytes
   if (_type < T24C32)
@@ -554,6 +610,7 @@ void EEPROM::read(uint32_t address, int8_t *data, uint32_t size)
  */
 void EEPROM::read(int8_t &data)
 {
+  uint8_t page_block;
   uint8_t addr;
   int ack;
 
