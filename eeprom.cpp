@@ -97,7 +97,7 @@ EEPROM::EEPROM(PinName sda, PinName scl, uint8_t address, TypeEeprom type) : _i2
     break;
   case T24C128:
   case T24C256:
-    if (address > 3)
+    if (address > 7)
     {
       _errnum = EEPROM_BadAddress;
     }
@@ -106,7 +106,7 @@ EEPROM::EEPROM(PinName sda, PinName scl, uint8_t address, TypeEeprom type) : _i2
     _page_block_number = 1;
     break;
   case T24C512:
-    if (address > 3)
+    if (address > 7)
     {
       _errnum = EEPROM_BadAddress;
     }
