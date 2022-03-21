@@ -30,7 +30,7 @@ Version: 1.0
 #define BIT_CLEAR(x, n) (x = x & ~(0x01 << n))
 
 const char *const EEPROM::_name[] = {"24C01", "24C02", "24C04", "24C08", "24C16", "24C32",
-                                     "24C64", "24C128", "24C256", "24C512", "24C1024", "24C1025"};
+                                     "24C64", "24C128", "24C256", "24C512", "24C1024", "24C1025", "M24M02"};
 
 /**
  * EEPROM(PinName sda, PinName scl, uint8_t address, TypeEeprom type) : _i2c(sda, scl)
@@ -115,7 +115,7 @@ EEPROM::EEPROM(PinName sda, PinName scl, uint8_t address, TypeEeprom type) : _i2
     _page_block_number = 1;
     break;
   case T24C1024:
-    if (address > 7)
+    if (address > 3)
     {
       _errnum = EEPROM_BadAddress;
     }
@@ -132,6 +132,15 @@ EEPROM::EEPROM(PinName sda, PinName scl, uint8_t address, TypeEeprom type) : _i2
     _page_write = 128;
     _page_block_number = 2;
     break;
+  case M24M02:
+    if (address > 1)
+    {
+      _errnum = EEPROM_BadAddress;
+    }
+    _address = _address << 3;
+    _page_write = 256;
+    _page_block_number = 4;
+    break;  
   }
 
   // Size in bytes
@@ -864,6 +873,9 @@ const char *EEPROM::getName(void)
   case T24C1025:
     i = 11;
     break;
+  case M24M02:
+    i = 12;
+    break;
   }
 
   return (_name[i]);
@@ -940,6 +952,10 @@ bool EEPROM::checkAddress(uint32_t address)
     break;
   case T24C1025:
     if (address >= T24C1025 - 1)
+      ret = false;
+    break;
+  case M24M02:
+    if (address >= M24M02 - 1)
       ret = false;
     break;
   }
