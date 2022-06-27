@@ -243,9 +243,10 @@ void EEPROM::write(uint32_t address, int8_t data[], uint32_t length)
 {
   uint8_t page_block;
   uint8_t addr = 0;
-  uint8_t blocs, remain;
+  uint8_t blocs;
+  uint16_t remain;
   uint8_t i, j;
-  uint8_t cmd[130];
+  uint8_t cmd[MAX_PAGE_SIZE + 2];
   int ack;
   uint32_t written_cnt = 0;
   uint8_t len;

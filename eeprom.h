@@ -365,6 +365,8 @@ int main()
 
 #define EEPROM_MaxError 6
 
+#define MAX_PAGE_SIZE 256
+
 static std::string _ErrorMessageEEPROM[EEPROM_MaxError] = {
     "",
     "Bad chip address",
@@ -563,7 +565,7 @@ private:
   int _address;                        // Local i2c address
   uint8_t _errnum;                     // Error number
   TypeEeprom _type;                    // EEPROM type
-  uint8_t _page_write;                 // Page size
+  uint16_t _page_write;                 // Page size
   uint8_t _page_block_number;          // Number of internally addressable page blocks
   uint32_t _size;                      // Size in bytes
   bool checkAddress(uint32_t address); // Check address range
